@@ -528,8 +528,8 @@ _EOF
 # 2/ Enable SSL
 if [ -f /etc/lighttpd/conf-available/10-ssl.conf ] ; then
 	cp -u /etc/lighttpd/conf-available/10-ssl.conf /etc/lighttpd/conf-enabled/10-ssl.conf
+	echo "Enabling SSL in lighttpd"
 fi
 
 systemctl reload-or-restart lighttpd
-
-
+echo "Restarted Lighttpd with joth additions. dnsname='${dnsname}'"
