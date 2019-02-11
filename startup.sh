@@ -523,8 +523,13 @@ cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
         url.redirect = (".*" => "https://${dnsname:-\%0}:8443")
     }
 }
-
 _EOF
+
+# 2/ Enable SSL
+if [ -f /etc/lighttpd/conf-available/10-ssl.conf ] ; then
+	cp -u /etc/lighttpd/conf-available/10-ssl.conf /etc/lighttpd/conf-enabled/10-ssl.conf
+fi
+
 systemctl reload-or-restart lighttpd
 
 
