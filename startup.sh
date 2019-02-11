@@ -148,7 +148,7 @@ if [ "x${httpd}" != "xinstall ok installed" ]; then
 		cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
 \$HTTP["scheme"] == "http" {
     \$HTTP["host"] =~ ".*" {
-        url.redirect = (".*" => "https://%0:8443")
+        url.redirect = (".*" => "https://${dnsname:-\%0}:8443")
     }
 }
 _EOF
