@@ -511,3 +511,20 @@ if [ ! -d /etc/letsencrypt/live/${dnsname} ]; then
 	fi
 fi
 
+
+# Joth additions-------
+# 1/ Use $dnsname in the redirect, rather than the requested hostname, to ensure navigation to
+# IP address goes to the intended URL
+# TODO: also redirect port 443 HTTPS. (currently it's not binding to that port at all)
+
+cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
+\$HTTP["scheme"] == "http" {
+    \$HTTP["host"] =~ ".*" {
+        url.redirect = (".*" => "https://${dnsname:-\%0}:8443")
+    }
+}
+
+_EOF
+systemctl reload-or-restart lighttpd
+
+
