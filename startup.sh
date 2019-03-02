@@ -532,6 +532,7 @@ echo "Restarted Lighttpd with joth additions. dnsname='${dnsname}'"
 # 2/ Enable stackdriver logging and monitoring
 
 mkdir -p /etc/google-fluentd/config.d/
+
 cat > /etc/google-fluentd/config.d/unifi.conf <<_EOF
 <source>
   @type tail
@@ -539,6 +540,18 @@ cat > /etc/google-fluentd/config.d/unifi.conf <<_EOF
   format none
   path /usr/lib/unifi/logs/*.log
   pos_file /var/lib/google-fluentd/pos/unifi.pos
+  read_from_head true
+  tag unifi
+</source>
+_EOF
+
+cat > /etc/google-fluentd/config.d/fail2ban.conf <<_EOF
+<source>
+  @type tail
+
+  format none
+  path /var/logs/fail2ban.log
+  pos_file /var/lib/google-fluentd/pos/fail2ban.pos
   read_from_head true
   tag unifi
 </source>
