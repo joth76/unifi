@@ -529,11 +529,10 @@ systemctl reload-or-restart lighttpd
 echo "Restarted Lighttpd with joth additions. dnsname='${dnsname}'"
 
 
-# 2/ Enable stackdriver logging
+# 2/ Enable stackdriver logging and monitoring
 
-if [ ! -f /etc/google-fluentd/config.d/unifi.conf ] ; then 
-	mkdir -p /etc/google-fluentd/config.d/
-	cat > /etc/google-fluentd/config.d/unifi.conf <<_EOF
+mkdir -p /etc/google-fluentd/config.d/
+cat > /etc/google-fluentd/config.d/unifi.conf <<_EOF
 <source>
   @type tail
 
@@ -545,8 +544,14 @@ if [ ! -f /etc/google-fluentd/config.d/unifi.conf ] ; then
 </source>
 _EOF
 
-	curl -sSO https://dl.google.com/cloudagents/install-logging-agent.sh
-	sudo bash install-logging-agent.sh
+curl -sSO https://dl.google.com/cloudagents/install-logging-agent.sh
+sudo bash install-logging-agent.sh
 	
-	echo "Installed Stackdriver logging agent"
-fi
+curl -sSO https://dl.google.com/cloudagents/install-monitoring-agent.sh
+sudo bash install-monitoring-agent.sh
+
+echo "Installed Stackdriver logging and monitoring agents"
+
+# 3/ Install handy utils
+
+sudo apt install less
