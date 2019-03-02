@@ -550,16 +550,18 @@ cat > /etc/google-fluentd/config.d/fail2ban.conf <<_EOF
   @type tail
 
   format none
-  path /var/logs/fail2ban.log
+  path /var/log/fail2ban.log
   pos_file /var/lib/google-fluentd/pos/fail2ban.pos
   read_from_head true
   tag unifi
 </source>
 _EOF
 
-curl -sSO https://dl.google.com/cloudagents/install-logging-agent.sh
-sudo bash install-logging-agent.sh
-	
+if [ ! -f install-logging-agent.sh ] ; then 
+	curl -sSO https://dl.google.com/cloudagents/install-logging-agent.sh
+	sudo bash install-logging-agent.sh
+fi
+
 curl -sSO https://dl.google.com/cloudagents/install-monitoring-agent.sh
 sudo bash install-monitoring-agent.sh
 
