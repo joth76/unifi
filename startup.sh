@@ -553,7 +553,7 @@ cat > /etc/google-fluentd/config.d/fail2ban.conf <<_EOF
   path /var/log/fail2ban.log
   pos_file /var/lib/google-fluentd/pos/fail2ban.pos
   read_from_head true
-  tag unifi
+  tag fail2ban
 </source>
 _EOF
 
@@ -562,8 +562,10 @@ if [ ! -f install-logging-agent.sh ] ; then
 	sudo bash install-logging-agent.sh
 fi
 
-curl -sSO https://dl.google.com/cloudagents/install-monitoring-agent.sh
-sudo bash install-monitoring-agent.sh
+if [ ! -f install-monitoring-agent.sh ] ; then 
+	curl -sSO https://dl.google.com/cloudagents/install-monitoring-agent.sh
+	sudo bash install-monitoring-agent.sh
+fi
 
 echo "Installed Stackdriver logging and monitoring agents"
 
