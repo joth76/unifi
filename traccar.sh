@@ -168,7 +168,8 @@ if [ ${bucket} ]; then
 	cat > /usr/local/sbin/traccar_data_backup.sh <<_EOF
 #! /bin/sh
 systemctl stop traccar.service
-/usr/bin/gsutil rsync -r -d /opt/traccar/data gs://$bucket
+# TODO: add the -d option to rsync, if we have versioning enabled on the bucket
+/usr/bin/gsutil -m rsync -r /opt/traccar/data gs://$bucket
 systemctl start traccar.service
 
 _EOF
