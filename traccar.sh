@@ -108,22 +108,7 @@ if (apt-get -qq install -y -t ${release}-backports certbot >/dev/null) || (apt-g
 	fi
 fi
 
-# Lighttpd needs a config file and a reload
-httpd=$(dpkg-query -W --showformat='${Status}\n' lighttpd 2>/dev/null)
-if [ "x${httpd}" != "xinstall ok installed" ]; then
-	if apt-get -qq install -y lighttpd >/dev/null; then
-cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
-\$HTTP["scheme"] == "http" {
-    \$HTTP["host"] =~ ".*" {
-        url.redirect = (".*" => "https://${dnsname:-\%0}:8443")
-    }
-}
-_EOF
-
-		systemctl reload-or-restart lighttpd
-		echo "Lighttpd installed  dnsname='${dnsname}'"
-	fi
-fi
+apt-get -qq  install -y  apache2
 
 ###########################################################
 #
@@ -242,49 +227,35 @@ Ob8VZRzI9neWagqNdwvYkQsEjgfbKbYK7p2CNTUQ
 _EOF
 fi
 
-# Write pre and post hooks to stop Lighttpd for the renewal
+# Write pre and post hooks to stop Apache2 for the renewal
 if [ ! -d /etc/letsencrypt/renewal-hooks/pre ]; then
 	mkdir -p /etc/letsencrypt/renewal-hooks/pre
 fi
-cat > /etc/letsencrypt/renewal-hooks/pre/lighttpd <<_EOF
+cat > /etc/letsencrypt/renewal-hooks/pre/apache2 <<_EOF
 #! /bin/sh
-systemctl stop lighttpd
+service apache2 stop
 _EOF
-chmod a+x /etc/letsencrypt/renewal-hooks/pre/lighttpd
+chmod a+x /etc/letsencrypt/renewal-hooks/pre/apache2
 
 if [ ! -d /etc/letsencrypt/renewal-hooks/post ]; then
 	mkdir -p /etc/letsencrypt/renewal-hooks/post
 fi
-cat > /etc/letsencrypt/renewal-hooks/post/lighttpd <<_EOF
+cat > /etc/letsencrypt/renewal-hooks/post/apache2 <<_EOF
 #! /bin/sh
-systemctl start lighttpd
+service apache2 start
 _EOF
-chmod a+x /etc/letsencrypt/renewal-hooks/post/lighttpd
-
-# Write the deploy hook to import the cert into Java
-if [ ! -d /etc/letsencrypt/renewal-hooks/deploy ]; then
-	mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-fi
-cat > /etc/letsencrypt/renewal-hooks/deploy/unifi <<_EOF
-#! /bin/sh
-_EOF
-chmod a+x /etc/letsencrypt/renewal-hooks/deploy/unifi
+chmod a+x /etc/letsencrypt/renewal-hooks/post/apache2
 
 # Write a script to acquire the first certificate (for a systemd timer)
 cat > /usr/local/sbin/certbotrun.sh <<_EOF
 #! /bin/sh
-extIP=\$(curl -fs -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip")
-dnsIP=\$(getent hosts ${dnsname} | cut -d " " -f 1)
 
 echo >> $LOG
 echo "CertBot run on \$(date)" >> $LOG
-if [ x\${extIP} = x\${dnsIP} ]; then
 	if [ ! -d /etc/letsencrypt/live/${dnsname} ]; then
-		systemctl stop lighttpd
 		if certbot certonly -d $dnsname --standalone --agree-tos --register-unsafely-without-email >> $LOG; then
 			echo "Received certificate for ${dnsname}" >> $LOG
 		fi
-		systemctl start lighttpd
 	fi
 	if /etc/letsencrypt/renewal-hooks/deploy/unifi; then
 		systemctl stop certbotrun.timer
@@ -333,7 +304,7 @@ fi
 # 1/ Use $dnsname in the redirect, rather than the requested hostname, to ensure navigation to
 # IP address goes to the intended URL
 # TODO: also redirect port 443 HTTPS. (currently it's not binding to that port at all)
-
+# -- done above
 
 # 2/ Enable stackdriver logging and monitoring
 
@@ -351,17 +322,6 @@ cat > /etc/google-fluentd/config.d/unifi.conf <<_EOF
 </source>
 _EOF
 
-cat > /etc/google-fluentd/config.d/fail2ban.conf <<_EOF
-<source>
-  @type tail
-
-  format none
-  path /var/log/fail2ban.log
-  pos_file /var/lib/google-fluentd/pos/fail2ban.pos
-  read_from_head true
-  tag fail2ban
-</source>
-_EOF
 
 if [ ! -f install-logging-agent.sh ] ; then 
 	curl -sSO https://dl.google.com/cloudagents/install-logging-agent.sh
@@ -377,6 +337,48 @@ echo "Installed Stackdriver logging and monitoring agents"
 
 # 3/ Install handy utils
 
-sudo apt install less
+apt install less
 
-systemctl stop unifi
+# 4/ Apache rev TLS proxy
+# from https://www.traccar.org/secure-connection/
+
+a2enmod ssl
+a2enmod proxy_http
+a2enmod proxy_wstunnel
+a2enmod rewrite
+a2dissite 000-default
+
+cat > /etc/apache2/sites-available/traccar.conf <<_EOF
+
+<IfModule mod_ssl.c>
+        <VirtualHost _default_:443>
+
+                ServerName ${dnsname}
+                ServerAdmin webmaster@localhost
+
+                DocumentRoot /var/www/html
+
+                ProxyPass /api/socket ws://localhost:8082/api/socket
+                ProxyPassReverse /api/socket ws://localhost:8082/api/socket
+
+                ProxyPass / http://localhost:8082/
+                ProxyPassReverse / http://localhost:8082/
+
+                SSLEngine on
+                SSLCertificateFile          /etc/letsencrypt/live/${dnsname}/fullchain.pem
+                SSLCertificateKeyFile       /etc/letsencrypt/live/${dnsname}/privkey.pem
+
+        </VirtualHost>
+</IfModule>
+
+<VirtualHost *:80>
+  ServerName ${dnsname}
+  Redirect / https://${dnsname}
+</VirtualHost>
+
+_EOF
+
+a2ensite traccar
+service apache2 restart
+
+
