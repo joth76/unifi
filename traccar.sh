@@ -11,11 +11,11 @@
 ###########################################################
 #
 # Set up logging for unattended scripts and UniFi's MongoDB log
-# Variables $LOG and $MONGOLOG are used later on in the script.
+# Variables $LOG  used later on in the script.
 #
-LOG="/var/log/unifi/gcp-unifi.log"
-if [ ! -f /etc/logrotate.d/gcp-unifi.conf ]; then
-	cat > /etc/logrotate.d/gcp-unifi.conf <<_EOF
+LOG="/var/log/unifi/gcp-traccar.log"
+if [ ! -f /etc/logrotate.d/traccar-unifi.conf ]; then
+	cat > /etc/logrotate.d/traccar-unifi.conf <<_EOF
 $LOG {
 	monthly
 	rotate 4
@@ -25,21 +25,6 @@ _EOF
 	echo "Script logrotate set up"
 fi
 
-MONGOLOG="/usr/lib/unifi/logs/mongod.log"
-if [ ! -f /etc/logrotate.d/unifi-mongod.conf ]; then
-	cat > /etc/logrotate.d/unifi-mongod.conf <<_EOF
-$MONGOLOG {
-	weekly
-	rotate 10
-	copytruncate
-	delaycompress
-	compress
-	notifempty
-	missingok
-}
-_EOF
-	echo "MongoDB logrotate set up"
-fi
 
 ###########################################################
 #
@@ -121,24 +106,6 @@ if [ "x${certbot}" != "xinstall ok installed" ]; then
 if (apt-get -qq install -y -t ${release}-backports certbot >/dev/null) || (apt-get -qq install -y certbot >/dev/null); then
 		echo "CertBot installed"
 	fi
-fi
-
-# UniFi needs a custom repo and APT update first
-unifi=$(dpkg-query -W --showformat='${Status}\n' unifi 2>/dev/null)
-if [ "x${unifi}" != "xinstall ok installed" ]; then
-	apt-get -qq install -y apt-transport-https >/dev/null
-	echo "deb http://www.ubnt.com/downloads/unifi/debian stable ubiquiti" > /etc/apt/sources.list.d/unifi.list
-	curl -Lfs -o /etc/apt/trusted.gpg.d/unifi-repo.gpg https://dl.ubnt.com/unifi/unifi-repo.gpg
-	apt-get -qq update -y >/dev/null
-	
-	if apt-get -qq install -y openjdk-8-jre-headless >/dev/null; then
-		echo "Java 8 installed"
-	fi
-	if apt-get -qq install -y unifi >/dev/null; then
-		echo "Unifi installed"
-	fi
-	systemctl stop mongodb
-	systemctl disable mongodb
 fi
 
 # Lighttpd needs a config file and a reload
