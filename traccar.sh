@@ -1,12 +1,12 @@
 #! /bin/sh
 
 # Version 1.3.3
-# This is a startup script for UniFi Controller on Debian based Google Compute Engine instances.
-# For instructions and how-to:  https://metis.fi/en/2018/02/unifi-on-gcp/
-# For comments and code walkthrough:  https://metis.fi/en/2018/02/gcp-unifi-code/
+# This is a startup script for traccar
+# Based on UniFi Controller on Debian for  https://metis.fi/en/2018/02/unifi-on-gcp/
 #
 # You may use this as you see fit as long as I am credited for my work.
 # (c) 2018 Petri Riihikallio Metis Oy
+# (c) 2019 Jonathan Dixon
 
 ###########################################################
 #
@@ -112,45 +112,17 @@ fi
 httpd=$(dpkg-query -W --showformat='${Status}\n' lighttpd 2>/dev/null)
 if [ "x${httpd}" != "xinstall ok installed" ]; then
 	if apt-get -qq install -y lighttpd >/dev/null; then
-		cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
+cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
 \$HTTP["scheme"] == "http" {
     \$HTTP["host"] =~ ".*" {
-        url.redirect = (".*" => "https://%0:8443")
+        url.redirect = (".*" => "https://${dnsname:-\%0}:8443")
     }
 }
 _EOF
-		systemctl reload-or-restart lighttpd
-		echo "Lighttpd installed"
-	fi
-fi
 
-# Fail2Ban needs three files and a reload
-f2b=$(dpkg-query -W --showformat='${Status}\n' fail2ban 2>/dev/null)
-if [ "x${f2b}" != "xinstall ok installed" ]; then 
-	if apt-get -qq install -y fail2ban >/dev/null; then
-			echo "Fail2Ban installed"
+		systemctl reload-or-restart lighttpd
+		echo "Lighttpd installed  dnsname='${dnsname}'"
 	fi
-	if [ ! -f /etc/fail2ban/filter.d/unifi-controller.conf ]; then
-		cat > /etc/fail2ban/filter.d/unifi-controller.conf <<_EOF
-[Definition]
-failregex = ^.* Failed .* login for .* from <HOST>\s*$
-_EOF
-		cat > /etc/fail2ban/jail.d/unifi-controller.conf <<_EOF
-[unifi-controller]
-filter   = unifi-controller
-port     = 8443
-logpath  = /var/log/unifi/server.log
-_EOF
-	fi
-	# The .local file will be installed in any case
-	cat > /etc/fail2ban/jail.d/unifi-controller.local <<_EOF
-[unifi-controller]
-enabled  = true
-maxretry = 3
-bantime  = 3600
-findtime = 3600
-_EOF
-	systemctl reload-or-restart fail2ban
 fi
 
 ###########################################################
@@ -202,52 +174,10 @@ fi
 
 ###########################################################
 #
-# Set up automatic repair for broken MongoDB on boot
-#
-if [ ! -f /usr/local/sbin/unifidb-repair.sh ]; then
-	cat > /usr/local/sbin/unifidb-repair.sh <<_EOF
-#! /bin/sh
-if ! pgrep mongod; then
-	if [ -f /var/lib/unifi/db/mongod.lock ] \
-	|| [ -f /var/lib/unifi/db/WiredTiger.lock ] \
-	|| [ -f /var/run/unifi/db.needsRepair ] \
-	|| [ -f /var/run/unifi/launcher.looping ]; then
-		if [ -f /var/lib/unifi/db/mongod.lock ]; then rm -f /var/lib/unifi/db/mongod.lock; fi
-		if [ -f /var/lib/unifi/db/WiredTiger.lock ]; then rm -f /var/lib/unifi/db/WiredTiger.lock; fi
-		if [ -f /var/run/unifi/db.needsRepair ]; then rm -f /var/run/unifi/db.needsRepair; fi
-		if [ -f /var/run/unifi/launcher.looping ]; then rm -f /var/run/unifi/launcher.looping; fi
-		echo >> $LOG
-		echo "Repairing Unifi DB on \$(date)" >> $LOG
-		su -c "/usr/bin/mongod --repair --dbpath /var/lib/unifi/db --smallfiles --logappend --logpath ${MONGOLOG} 2>>$LOG" unifi
-	fi
-else
-	echo "MongoDB is running. Exiting..."
-	exit 1
-fi
-exit 0
-_EOF
-	chmod a+x /usr/local/sbin/unifidb-repair.sh
-
-	cat > /etc/systemd/system/unifidb-repair.service <<_EOF
-[Unit]
-Description=Repair UniFi MongoDB database at boot
-Before=unifi.service mongodb.service
-After=network-online.target
-Wants=network-online.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/unifidb-repair.sh
-[Install]
-WantedBy=multi-user.target
-_EOF
-	systemctl enable unifidb-repair.service
-	echo "Unifi DB autorepair set up"
-fi
-
-###########################################################
-#
 # Set up daily backup to a bucket after 01:00
 #
+# TODO: this should shutdown the server to make a clean snapshot of the DB
+
 bucket=$(curl -fs -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/bucket")
 if [ ${bucket} ]; then
 	cat > /etc/systemd/system/unifi-backup.service <<_EOF
@@ -257,7 +187,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/gsutil rsync -r -d /var/lib/unifi/backup gs://$bucket
+ExecStart=/usr/bin/gsutil rsync -r -d /opt/traccar/data gs://$bucket
 _EOF
 
 	cat > /etc/systemd/system/unifi-backup.timer <<_EOF
@@ -273,37 +203,6 @@ _EOF
 	systemctl start unifi-backup.timer
 	echo "Backups to ${bucket} set up"
 fi
-
-###########################################################
-#
-# Adjust Java heap (advanced setup)
-#
-# xms=$(curl -fs -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/xms")
-# xmx=$(curl -fs -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/xmx")
-# if [ ${xms} ] || [ ${xmx} ]; then touch /usr/share/misc/java-heap-adjusted; fi
-#
-# if [ -e /usr/share/misc/java-heap-adjusted ]; then
-#	 if [ "0${xms}" -lt 100 ]; then xms=1024; fi
-#	 if grep -e "^\s*unifi.xms=[0-9]" /var/lib/unifi/system.properties >/dev/null; then
-#	 	sed -i -e "s/^[[:space:]]*unifi.xms=[[:digit:]]\+/unifi.xms=${xms}/" /var/lib/unifi/system.properties
-#	 else
-#	 	echo "unifi.xms=${xms}" >>/var/lib/unifi/system.properties
-#	 fi
-#	 message=" xms=${xms}"
-#	 
-#	 if [ "0${xmx}" -lt "${xms}" ]; then xmx=${xms}; fi
-#	 if grep -e "^\s*unifi.xmx=[0-9]" /var/lib/unifi/system.properties >/dev/null; then
-#	 	sed -i -e "s/^[[:space:]]*unifi.xmx=[[:digit:]]\+/unifi.xmx=${xmx}/" /var/lib/unifi/system.properties
-#	 else
-#	 	echo "unifi.xmx=${xmx}" >>/var/lib/unifi/system.properties
-#	 fi
-#	 message="${message} xmx=${xmx}"
-#	 
-#	 if [ -n "${message}" ]; then
-#	 	echo "Java heap set to:${message}"
-#	 fi
-#	 systemctl restart unifi
-# fi
 
 
 ###########################################################
@@ -368,55 +267,6 @@ if [ ! -d /etc/letsencrypt/renewal-hooks/deploy ]; then
 fi
 cat > /etc/letsencrypt/renewal-hooks/deploy/unifi <<_EOF
 #! /bin/sh
-
-if [ -e $privkey ] && [ -e $pubcrt ] && [ -e $chain ]; then
-
-	echo >> $LOG
-	echo "Importing new certificate on \$(date)" >> $LOG
-	p12=\$(mktemp)
-	
-	if ! openssl pkcs12 -export \\
-	-in $pubcrt \\
-	-inkey $privkey \\
-	-CAfile $chain \\
-	-out \${p12} -passout pass:aircontrolenterprise \\
-	-caname root -name unifi >/dev/null ; then
-		echo "OpenSSL export failed" >> $LOG
-		exit 1
-	fi
-	
-	if ! keytool -delete -alias unifi \\
-	-keystore /var/lib/unifi/keystore \\
-	-deststorepass aircontrolenterprise >/dev/null ; then
-		echo "KeyTool delete failed" >> $LOG
-	fi
-	
-	if ! keytool -importkeystore \\
-	-srckeystore \${p12} \\
-	-srcstoretype pkcs12 \\
-	-srcstorepass aircontrolenterprise \\
-	-destkeystore /var/lib/unifi/keystore \\
-	-deststorepass aircontrolenterprise \\
-	-destkeypass aircontrolenterprise \\
-	-alias unifi -trustcacerts >/dev/null; then
-		echo "KeyTool import failed" >> $LOG
-		exit 2
-	fi
-	
-	systemctl stop unifi
-	if ! java -jar /usr/lib/unifi/lib/ace.jar import_cert \\
-	$pubcrt $chain $caroot >/dev/null; then
-		echo "Java import_cert failed" >> $LOG
-		systemctl start unifi
-		exit 3
-	fi
-	systemctl start unifi
-	rm -f \${p12}
-	echo "Success" >> $LOG
-else
-	echo "Certificate files missing" >> $LOG
-	exit 4
-fi
 _EOF
 chmod a+x /etc/letsencrypt/renewal-hooks/deploy/unifi
 
@@ -484,17 +334,6 @@ fi
 # IP address goes to the intended URL
 # TODO: also redirect port 443 HTTPS. (currently it's not binding to that port at all)
 
-cat > /etc/lighttpd/conf-enabled/10-unifi-redirect.conf <<_EOF
-\$HTTP["scheme"] == "http" {
-    \$HTTP["host"] =~ ".*" {
-        url.redirect = (".*" => "https://${dnsname:-\%0}:8443")
-    }
-}
-_EOF
-
-systemctl reload-or-restart lighttpd
-echo "Restarted Lighttpd with joth additions. dnsname='${dnsname}'"
-
 
 # 2/ Enable stackdriver logging and monitoring
 
@@ -539,3 +378,5 @@ echo "Installed Stackdriver logging and monitoring agents"
 # 3/ Install handy utils
 
 sudo apt install less
+
+systemctl stop unifi
