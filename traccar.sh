@@ -1,8 +1,8 @@
 #! /bin/sh
 
-# Version 1.3.3
+# Version 0.5
 # This is a startup script for traccar
-# Based on UniFi Controller on Debian for  https://metis.fi/en/2018/02/unifi-on-gcp/
+# Based on UniFi Controller on Debian for  https://metis.fi/en/2018/02/unifi-on-gcp/ v1.3.3
 #
 # You may use this as you see fit as long as I am credited for my work.
 # (c) 2018 Petri Riihikallio Metis Oy
