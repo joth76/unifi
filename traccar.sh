@@ -253,9 +253,11 @@ cat > /usr/local/sbin/certbotrun.sh <<_EOF
 echo >> $LOG
 echo "CertBot run on \$(date)" >> $LOG
 	if [ ! -d /etc/letsencrypt/live/${dnsname} ]; then
+                systemctl stop apache2
 		if certbot certonly -d $dnsname --standalone --agree-tos --register-unsafely-without-email >> $LOG; then
 			echo "Received certificate for ${dnsname}" >> $LOG
 		fi
+                systemctl start apache2
 	fi
 	if /etc/letsencrypt/renewal-hooks/deploy/unifi; then
 		systemctl stop certbotrun.timer
