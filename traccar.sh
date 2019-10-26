@@ -161,10 +161,18 @@ fi
 #
 # Set up daily backup to a bucket after 01:00
 #
-# TODO: this should shutdown the server to make a clean snapshot of the DB
+
 
 bucket=$(curl -fs -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/attributes/bucket")
 if [ ${bucket} ]; then
+	cat > /usr/local/sbin/traccar_data_backup.sh <<_EOF
+#! /bin/sh
+systemctl stop traccar.service
+/usr/bin/gsutil rsync -r -d /opt/traccar/data gs://$bucket
+systemctl start traccar.service
+
+_EOF
+
 	cat > /etc/systemd/system/unifi-backup.service <<_EOF
 [Unit]
 Description=Daily backup to ${bucket} service
@@ -172,7 +180,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/gsutil rsync -r -d /opt/traccar/data gs://$bucket
+ExecStart=sh /usr/local/sbin/traccar_data_backup.sh
 _EOF
 
 	cat > /etc/systemd/system/unifi-backup.timer <<_EOF
