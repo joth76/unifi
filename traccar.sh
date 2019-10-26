@@ -345,6 +345,7 @@ apt install less
 # from https://www.traccar.org/secure-connection/
 
 a2enmod ssl
+a2enmod proxy
 a2enmod proxy_http
 a2enmod proxy_wstunnel
 a2enmod rewrite
@@ -360,11 +361,11 @@ cat > /etc/apache2/sites-available/traccar.conf <<_EOF
 
                 DocumentRoot /var/www/html
 
-                ProxyPass /api/socket ws://localhost:8082/api/socket
-                ProxyPassReverse /api/socket ws://localhost:8082/api/socket
+                ProxyPass /api/socket ws://localhost:8082/api/socket enablereuse=off
+                ProxyPassReverse /api/socket ws://localhost:8082/api/socket enablereuse=off
 
-                ProxyPass / http://localhost:8082/
-                ProxyPassReverse / http://localhost:8082/
+                ProxyPass / http://localhost:8082/ enablereuse=off
+                ProxyPassReverse / http://localhost:8082/ enablereuse=off
 
                 SSLEngine on
                 SSLCertificateFile          /etc/letsencrypt/live/${dnsname}/fullchain.pem
